@@ -1,0 +1,86 @@
+[
+  {
+    "disease_name": "Wheat Rust (Yellow Stripe Rust)",
+    "pathogen": "Puccinia striiformis f. sp. tritici",
+    "crops_affected": [
+      "wheat",
+      "barley"
+    ],
+    "symptoms": "Yellow to orange pustules in stripes along leaf veins. Leaves turn yellow and dry.",
+    "favorable_conditions": "Cool temperatures (10–15°C), high humidity, dew formation",
+    "management": [
+      "Spray Propiconazole 25% EC @ 0.1% or Tebuconazole 25.9% EC @ 0.1%",
+      "Use resistant varieties: HD 2967, PBW 550, DBW 17",
+      "Avoid late sowing (Rabi season)",
+      "Remove infected plant debris after harvest"
+    ],
+    "resistant_varieties": [
+      "HD 2967",
+      "PBW 550",
+      "DBW 17",
+      "GW 322"
+    ],
+    "kisan_advisory": "यदि पत्तियों पर पीली धारियाँ दिखें तो तुरंत फफूंदनाशक का छिड़काव करें।"
+  },
+  {
+    "disease_name": "Rice Blast",
+    "pathogen": "Magnaporthe oryzae",
+    "crops_affected": [
+      "rice"
+    ],
+    "symptoms": "Diamond-shaped lesions with grey centre and brown border on leaves. Neck rot causes white heads (deadhearts).",
+    "favorable_conditions": "High humidity >90%, temperature 24–28°C, excess nitrogen",
+    "management": [
+      "Spray Tricyclazole 75 WP @ 0.6 g/L water",
+      "Isoprothiolane 40 EC @ 1.5 ml/L as preventive spray",
+      "Avoid excess nitrogen fertilisation",
+      "Drain standing water for 3–4 days at tillering"
+    ],
+    "resistant_varieties": [
+      "Pusa Basmati 1121",
+      "Swarna Sub1",
+      "MTU 1010"
+    ],
+    "kisan_advisory": "ब्लास्ट के लिए ट्राइसाइक्लाजोल का छिड़काव करें। अधिक नाइट्रोजन से बचें।"
+  },
+  {
+    "disease_name": "Cotton Bollworm",
+    "pathogen": "Helicoverpa armigera (insect pest)",
+    "crops_affected": [
+      "cotton",
+      "tomato",
+      "chickpea"
+    ],
+    "symptoms": "Entry holes in bolls, green caterpillars inside bolls, shedding of young bolls",
+    "favorable_conditions": "Temperature 25–30°C, dryspells after rains",
+    "management": [
+      "Spray Chlorantraniliprole 18.5 SC @ 0.3 ml/L",
+      "Emamectin benzoate 5 SG @ 0.4 g/L",
+      "Use pheromone traps (5/acre) for monitoring",
+      "Spray Neem-based insecticide (NSKE 5%) as preventive measure"
+    ],
+    "resistant_varieties": [
+      "Bt cotton hybrids: JKCH 1947, MRC 7017 BG II"
+    ],
+    "kisan_advisory": "ਬੋਲਵਰਮ ਲਈ ਕਲੋਰਾਂਟਰਾਨਿਲੀਪ੍ਰੋਲ ਦਾ ਛਿੜਕਾਅ ਕਰੋ।"
+  },
+  {
+    "disease_name": "Khaira Disease (Rice Zinc Deficiency)",
+    "pathogen": "Zinc deficiency (abiotic)",
+    "crops_affected": [
+      "rice"
+    ],
+    "symptoms": "Rusty brown spots on older leaves, stunted growth, pale yellow new leaves",
+    "favorable_conditions": "Flooded soils with pH > 7.5, calcareous soils, cold weather",
+    "management": [
+      "Apply zinc sulphate (ZnSO4) @ 25 kg/ha as basal dose",
+      "Foliar spray of 0.5% ZnSO4 + 0.25% slaked lime (2–3 sprays)",
+      "Maintain proper water management – drain and re-irrigate"
+    ],
+    "resistant_varieties": [
+      "Pusa Sugandh 5",
+      "Swarna"
+    ],
+    "kisan_advisory": "खैरा रोग के लिए जिंक सल्फेट 25 किग्रा/हेक्टेयर डालें।"
+  }
+]

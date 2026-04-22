@@ -1,0 +1,65 @@
+# =============================================================================
+#  AgroSight – Python Dependencies
+# =============================================================================
+
+# ── Core API framework ────────────────────────────────────────────────────
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+sse-starlette==2.1.3
+python-multipart==0.0.20
+
+# ── Config / env ─────────────────────────────────────────────────────────
+pydantic==2.10.3
+pydantic-settings==2.6.1
+python-dotenv==1.0.1
+
+# ── LLM & Agent ──────────────────────────────────────────────────────────
+langchain>=0.3.0
+langchain-community>=0.3.0
+langchain-mistralai>=0.2.0
+langgraph==0.2.73          # v1.0.x moved create_react_agent out of langgraph.prebuilt
+langgraph-prebuilt==0.1.8  # last version with create_react_agent in langgraph.prebuilt
+langchain-core>=0.3.0
+
+# ── Embeddings ────────────────────────────────────────────────────────────
+sentence-transformers
+FlagEmbedding
+torch
+transformers
+
+# ── Cross-encoder reranker ────────────────────────────────────────────────
+# uses sentence-transformers (already above)
+
+# ── Vector store ─────────────────────────────────────────────────────────
+qdrant-client==1.12.2
+
+# ── PDF processing ────────────────────────────────────────────────────────
+pdfplumber==0.11.4
+pypdf==5.1.0
+PyMuPDF==1.24.14
+pytesseract==0.3.13
+Pillow==11.0.0
+
+# ── Data processing ───────────────────────────────────────────────────────
+pandas==2.2.3
+pyarrow==18.1.0
+numpy
+
+# ── Session store ─────────────────────────────────────────────────────────
+redis
+
+# ── HTTP client ──────────────────────────────────────────────────────────
+httpx
+aiohttp
+requests
+
+# ── Utilities ────────────────────────────────────────────────────────────
+tenacity
+loguru
+tqdm
+python-slugify
+
+# ── Testing ──────────────────────────────────────────────────────────────
+pytest
+pytest-asyncio
+httpx

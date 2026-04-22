@@ -1,0 +1,79 @@
+[
+  {
+    "soil_type": "Black Cotton Soil (Regur)",
+    "region": "Maharashtra, Madhya Pradesh, Gujarat, Andhra Pradesh",
+    "characteristics": "High clay content (30–80%), high water-holding capacity, cracks when dry, self-mulching, rich in calcium and magnesium",
+    "ph_range": "7.5–8.5 (alkaline)",
+    "crops_best_suited": [
+      "cotton",
+      "soybean",
+      "wheat",
+      "jowar",
+      "chickpea"
+    ],
+    "management_tips": "Avoid waterlogging. Add gypsum for sodic conditions. Deep ploughing once in 3 years. Zinc application essential.",
+    "fertiliser_notes": "Potassium generally not required. Phosphorus fixation high – use SSP in splits."
+  },
+  {
+    "soil_type": "Alluvial Soil",
+    "region": "Indo-Gangetic Plains – Punjab, Haryana, UP, Bihar, West Bengal",
+    "characteristics": "High fertility, sandy loam to clay loam texture, good water retention, rich in potash and lime",
+    "ph_range": "6.5–8.0",
+    "crops_best_suited": [
+      "wheat",
+      "rice",
+      "sugarcane",
+      "maize",
+      "pulses",
+      "oilseeds"
+    ],
+    "management_tips": "Maintain organic matter with green manuring. Avoid burning stubble. Use balanced NPK fertilisation.",
+    "fertiliser_notes": "Zinc deficiency common in rice-wheat systems. Apply ZnSO4 25 kg/ha once in 3 years."
+  },
+  {
+    "soil_type": "Red and Yellow Soil",
+    "region": "Eastern Deccan – Odisha, Jharkhand, parts of Karnataka and Tamil Nadu",
+    "characteristics": "Sandy loam texture, low water retention, low in nitrogen, phosphorus, and organic matter, good drainage",
+    "ph_range": "5.5–7.5",
+    "crops_best_suited": [
+      "groundnut",
+      "cotton",
+      "millets",
+      "pulses",
+      "tobacco"
+    ],
+    "management_tips": "Add organic manure (FYM 10 t/ha). Contour bunding for water conservation. Lime application where pH < 6.",
+    "fertiliser_notes": "Phosphorus fertilisation critical. DAP or SSP + urea recommended."
+  },
+  {
+    "soil_type": "Laterite Soil",
+    "region": "Kerala, Karnataka, Maharashtra (coastal), Goa, parts of Odisha",
+    "characteristics": "High iron and aluminium oxides, low base saturation, hardpans on drying, very low fertility",
+    "ph_range": "4.5–6.0 (acidic)",
+    "crops_best_suited": [
+      "cashew",
+      "coconut",
+      "rubber",
+      "tea",
+      "coffee",
+      "tapioca"
+    ],
+    "management_tips": "Lime application mandatory (2–3 t/ha). Heavy mulching to retain moisture. Green manuring.",
+    "fertiliser_notes": "Phosphorus fixation very high. Apply rock phosphate. Boron deficiency common – apply borax."
+  },
+  {
+    "soil_type": "Sandy / Desert Soil",
+    "region": "Rajasthan, parts of Gujarat and Haryana (Aravalli region)",
+    "characteristics": "Coarse texture, very low water retention, low organic matter, high permeability, wind erosion prone",
+    "ph_range": "7.0–8.5",
+    "crops_best_suited": [
+      "bajra",
+      "moth bean",
+      "cluster bean (guar)",
+      "sesame",
+      "castor"
+    ],
+    "management_tips": "Windbreaks and shelter belts. Drip irrigation highly recommended. Add organic manure to improve water retention.",
+    "fertiliser_notes": "Nitrogen losses high – split application mandatory. Phosphorus and micronutrients needed."
+  }
+]

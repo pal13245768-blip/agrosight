@@ -1,0 +1,51 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# Data (large files)
+data/books/
+data/raw/pest_disease/*.jpg
+data/raw/pest_disease/*.jpeg
+data/raw/pest_disease/*.png
+chunks_output/
+
+# Logs
+logs/
+*.log
+
+# ML model cache
+.cache/
+~/.cache/huggingface/
+models/
+
+# Eval outputs
+eval_results.json
+eval_results_*.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Docker
+*.pid
+
+# Kaggle credentials
+~/.kaggle/
+
+# OS
+.DS_Store
+Thumbs.db

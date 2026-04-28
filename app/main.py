@@ -13,6 +13,7 @@ All endpoints are async and production-ready.
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator
@@ -192,7 +193,7 @@ async def chat(req: ChatRequest) -> Any:
             yield {"event": "session", "data": session_id}
 
             async for token in stream_agent(req.question, session_id, req.filters):
-                yield {"event": "token", "data": token}
+                yield {"event": "token", "data": json.dumps(token)}
 
             yield {"event": "done", "data": "[DONE]"}
 

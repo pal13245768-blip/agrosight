@@ -49,44 +49,59 @@ function loadHistory() {
 
 async function fetchWeatherMock() {
     // In a real app, we might call /search or a separate endpoint
-    elements.weatherDisplay.textContent = 'Ahmedabad: 32°C, Sunny';
+    elements.weatherDisplay.textContent = 'Ahmedabad: , Sunny';
 }
 
 // UI Helpers
 function appendMessage(role, content = '') {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
-    
+
     // Convert basic markdown to HTML
     messageDiv.innerHTML = formatMarkdown(content);
-    
+
     elements.chatMessages.appendChild(messageDiv);
     elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
-    
+
     if (elements.welcomeScreen.style.opacity !== '0') {
         elements.welcomeScreen.style.opacity = '0';
         elements.welcomeScreen.style.pointerEvents = 'none';
     }
-    
+
     return messageDiv;
 }
 
 function formatMarkdown(text) {
-    // Simple regex-based markdown for a clean UI
-    return text
-        .replace(/\n\n/g, '</p><p>')
-        .replace(/\n/g, '<br>')
-        .replace(/### (.*?)(\n|<br>)/g, '<h3>$1</h3>')
-        .replace(/## (.*?)(\n|<br>)/g, '<h2>$1</h2>')
+    if (!text) return '';
+    let html = text
+        // Bold text
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\| (.*?) \|/g, '<tr><td>$1</td></tr>') // Very rough table fallback
+        // Italic text
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        // Headings
+        .replace(/^### (.*?)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.*?)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.*?)$/gm, '<h1>$1</h1>')
+        // Lists
+        .replace(/^\s*\-\s(.*)$/gm, '<li>$1</li>')
+        .replace(/^\s*\d+\.\s(.*)$/gm, '<li>$1</li>')
+        // Wrap contiguous list items in ul/ol tag manually or just rely on CSS
+        // Source tags
         .replace(/\[Source: (.*?)\]/g, '<span class="source-tag">Source: $1</span>');
+
+    // Multiple newlines to paragraphs
+    html = html.replace(/\n{2,}/g, '</p><p>');
+    // Single newlines to line breaks (unless they follow a block tag like h2/h3/li)
+    html = html.replace(/(?<!<\/h[1-6]>|<\/li>|<\/p>)\n/g, '<br>');
+
+    // Wrap the whole thing in paragraphs if missing
+    return `<p>${html}</p>`.replace(/<p><\/p>/g, '');
 }
 
 // Core Chat Logic
 async function sendMessage(question) {
     if (isGenerating || !question.trim()) return;
-    
+
     isGenerating = true;
     elements.userInput.value = '';
     elements.sendBtn.disabled = true;
@@ -116,14 +131,14 @@ async function sendMessage(question) {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let currentEvent = '';
-        
+
         while (true) {
             const { value, done } = await reader.read();
             if (done) break;
-            
+
             const chunk = decoder.decode(value);
             const lines = chunk.split('\n');
-            
+
             for (const line of lines) {
                 const trimmed = line.trim();
                 if (!trimmed) continue;
@@ -133,9 +148,14 @@ async function sendMessage(question) {
                 } else if (trimmed.startsWith('data: ')) {
                     const data = trimmed.slice(6);
                     if (data === '[DONE]') continue;
-                    
+
                     if (currentEvent === 'token') {
-                        fullAnswer += data; 
+                        try {
+                            const parsedData = JSON.parse(data);
+                            fullAnswer += parsedData;
+                        } catch (e) {
+                            fullAnswer += data;
+                        }
                         aiMessageDiv.innerHTML = formatMarkdown(fullAnswer);
                         elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
                     } else if (currentEvent === 'session') {
@@ -158,11 +178,11 @@ function saveToLocalHistory(question, answer) {
     // Simplified local persistence for the demo
     let history = JSON.parse(localStorage.getItem('agrosight_history') || '[]');
     const existing = history.findIndex(h => h.id === currentSessionId);
-    
+
     if (existing === -1) {
         history.unshift({ id: currentSessionId, title: question.substring(0, 30) + '...' });
     }
-    
+
     localStorage.setItem('agrosight_history', JSON.stringify(history.slice(0, 10)));
     loadHistory();
 }

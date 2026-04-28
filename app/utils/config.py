@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     mistral_api_key: str = Field(..., env="MISTRAL_API_KEY")
     mistral_model: str = "mistral-large-latest"
     llm_temperature: float = 0.2
-    llm_max_tokens: int = 1024
+    llm_max_tokens: int = 4096
 
     # ── Qdrant ────────────────────────────────────────────────────────────
     qdrant_url: str = Field(..., env="QDRANT_URL")
@@ -60,8 +60,9 @@ class Settings(BaseSettings):
 
     # ── Government data ───────────────────────────────────────────────────
     data_gov_api_key_1: str = ""
-    data_gov_base_url: str = "https://www.data.gov.in/api"
-    data_gov_mandi_resource_id: str = "35985678-0d79-46b4-9ed6-6f13308a1d24"
+    data_gov_base_url: str = "https://api.data.gov.in"
+    data_gov_mandi_resource_id: str = "9ef84268-d588-465a-a308-a864a43d0070"
+    data_gov_variety_resource_id: str = "35985678-0d79-46b4-9ed6-6f13308a1d24"
 
     agmarknet_api_key: str = ""
     agmarknet_base_url: str = "https://agmarknet.gov.in/api"

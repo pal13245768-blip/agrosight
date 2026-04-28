@@ -13,6 +13,7 @@ calls when it decides tool use is needed.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 import httpx
@@ -22,20 +23,6 @@ from app.utils.config import get_settings
 from app.utils.logger import logger
 
 settings = get_settings()
-
-# Static price fallback (used when API is down)
-_PRICE_FALLBACK: dict[str, float] = {
-    "wheat": 2275,
-    "rice": 2300,
-    "cotton": 7020,
-    "soybean": 4600,
-    "maize": 2090,
-    "sugarcane": 340,
-    "onion": 1200,
-    "tomato": 800,
-    "potato": 1200,
-}
-
 
 # ---------------------------------------------------------------------------
 # Tool 1 – Weather advisory
@@ -48,14 +35,18 @@ async def get_weather_advisory(location: str) -> dict[str, Any]:
     Fetch current weather for *location* (city name or lat,lon) from OpenWeatherMap
     and generate a short agronomy advisory based on conditions.
 
-    Returns:
-        dict with keys: location, temperature_c, humidity_pct, wind_kmh,
-                        condition, advisory, source
+    Returns real-time weather data or error if source is unavailable.
     """
     if not settings.openweather_api_key:
+        error_msg = (
+            "OpenWeatherMap API key not configured. "
+            "Cannot fetch real-time weather data. Please contact administrator."
+        )
+        logger.error(error_msg)
         return {
-            "error": "OpenWeatherMap API key not configured",
-            "advisory": "Weather data unavailable. Please check conditions locally.",
+            "error": error_msg,
+            "location": location,
+            "status": "unavailable",
         }
 
     url = f"{settings.openweather_base_url}/weather"
@@ -66,10 +57,27 @@ async def get_weather_advisory(location: str) -> dict[str, Any]:
         "lang": "en",
     }
 
-    async with httpx.AsyncClient(timeout=settings.request_timeout) as client:
-        resp = await client.get(url, params=params)
-        resp.raise_for_status()
-        data = resp.json()
+    try:
+        async with httpx.AsyncClient(timeout=settings.request_timeout) as client:
+            resp = await client.get(url, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        error_msg = f"OpenWeatherMap API error (HTTP {exc.response.status_code}): {exc.response.text}"
+        logger.error(error_msg)
+        return {
+            "error": error_msg,
+            "location": location,
+            "status": "api_error",
+        }
+    except Exception as exc:
+        error_msg = f"Failed to fetch weather for {location}: {exc}"
+        logger.error(error_msg)
+        return {
+            "error": error_msg,
+            "location": location,
+            "status": "unavailable",
+        }
 
     temp_c = data["main"]["temp"]
     humidity = data["main"]["humidity"]
@@ -77,18 +85,30 @@ async def get_weather_advisory(location: str) -> dict[str, Any]:
     wind_kmh = round(wind_mps * 3.6, 1)
     condition = data["weather"][0]["description"]
     rain_1h = data.get("rain", {}).get("1h", 0)
+    feels_like = data["main"].get("feels_like", temp_c)
 
     advisory = _generate_advisory(temp_c, humidity, wind_kmh, condition, rain_1h)
 
+    # Convert OpenWeatherMap Unix timestamp → IST human-readable string
+    dt_unix = data.get("dt")
+    if dt_unix:
+        ist = datetime.fromtimestamp(dt_unix, tz=timezone(timedelta(hours=5, minutes=30)))
+        observed_at = ist.strftime("%d %B %Y, %I:%M %p IST")
+    else:
+        observed_at = datetime.now(tz=timezone(timedelta(hours=5, minutes=30))).strftime("%d %B %Y, %I:%M %p IST")
+
     return {
         "location": data.get("name", location),
+        "observed_at": observed_at,
+        "data_freshness": "Real-time data from OpenWeatherMap. This is current weather, NOT historical.",
         "temperature_c": temp_c,
+        "feels_like_c": round(feels_like, 1),
         "humidity_pct": humidity,
         "wind_kmh": wind_kmh,
         "condition": condition,
         "rain_last_hour_mm": rain_1h,
         "advisory": advisory,
-        "source": "OpenWeatherMap",
+        "source": "OpenWeatherMap (Real-time)",
     }
 
 
@@ -136,27 +156,204 @@ def _generate_advisory(
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))
 async def get_mandi_price(commodity: str, market: str = "", state: str = "Gujarat") -> dict[str, Any]:
     """
-    Fetch modal price for *commodity* at *market* from data.gov.in Agmarknet API.
-
-    Falls back to static table if API is unreachable.
+    Fetch real-time modal price for *commodity* at *market* from multiple sources.
+    
+    Primary: data.gov.in Agmarknet API
+    Secondary: Agmarknet direct API
+    
+    Returns latest price data with source information.
+    Raises exception if all sources fail - no fallback to stale data.
     """
+    commodity_normalized = commodity.lower().strip()
+    market_normalized = market.lower().strip() if market else ""
+    state_normalized = state.lower().strip() if state else "Gujarat"
+
+    # Try primary source: data.gov.in
+    data_gov_result = await _fetch_from_data_gov_in(
+        commodity_normalized, market_normalized, state_normalized
+    )
+    if data_gov_result:
+        return data_gov_result
+
+    # Try secondary source: Agmarknet direct API
+    agmarknet_result = await _fetch_from_agmarknet(
+        commodity_normalized, market_normalized, state_normalized
+    )
+    if agmarknet_result:
+        return agmarknet_result
+
+    # If all sources fail, return error (no fallback)
+    error_msg = (
+        f"Unable to fetch real-time price for {commodity} in {market or 'any market'}, {state}. "
+        f"All price sources are temporarily unavailable. Please try again in a few moments."
+    )
+    logger.error(error_msg)
+    return {
+        "error": error_msg,
+        "commodity": commodity,
+        "market": market,
+        "state": state,
+        "status": "unavailable",
+        "available_sources": ["data.gov.in", "agmarknet.gov.in"],
+    }
+
+
+async def _fetch_from_data_gov_in(
+    commodity: str, market: str, state: str
+) -> dict[str, Any] | None:
+    """
+    Fetch price data from data.gov.in using BOTH Agmarknet-backed datasets.
+
+    Resource 1 (9ef84268): Current Daily Price — filter keys: filters[state.keyword], filters[market], filters[commodity]
+    Resource 2 (35985678): Variety-wise Daily Price — filter keys: filters[State], filters[District], filters[Commodity]
+
+    Fetches 50 records and sorts CLIENT-SIDE by arrival_date DESC — the API
+    returns records in arbitrary order, so requesting only 5 can give week-old
+    data even when newer records exist in the full dataset.
+    Returns None if both are unavailable or return no results.
+    """
+
+    def _parse_ddmmyyyy(raw: str) -> tuple:
+        """Parse DD/MM/YYYY into (YYYY, MM, DD) for descending sort."""
+        try:
+            d, m, y = raw.split("/")
+            return (int(y), int(m), int(d))
+        except Exception:
+            return (0, 0, 0)
+
     api_key = settings.data_gov_api_key_1
-    resource_id = settings.data_gov_mandi_resource_id
-
     if not api_key:
-        return _price_fallback(commodity, market)
+        logger.debug("data.gov.in API key not configured, skipping this source")
+        return None
 
-    url = f"{settings.data_gov_base_url}/resource/{resource_id}"
-    params: dict[str, Any] = {
+    base = settings.data_gov_base_url  # https://api.data.gov.in
+
+    # ── Resource 1: Current Daily Price (9ef84268) ──────────────────────────
+    # Official filter keys: filters[state.keyword], filters[district], filters[market], filters[commodity]
+    r1_id = settings.data_gov_mandi_resource_id  # 9ef84268-d588-465a-a308-a864a43d0070
+    r1_params: dict[str, Any] = {
         "api-key": api_key,
         "format": "json",
         "filters[commodity]": commodity.title(),
-        "limit": 10,
+        "limit": 50,  # Fetch enough records to find the most recent after client-side sort
     }
     if market:
-        params["filters[market]"] = market.title()
+        r1_params["filters[market]"] = market.title()
     if state:
-        params["filters[state]"] = state.title()
+        r1_params["filters[state.keyword]"] = state.title()
+
+    try:
+        async with httpx.AsyncClient(timeout=settings.request_timeout, follow_redirects=True) as client:
+            resp = await client.get(f"{base}/resource/{r1_id}", params=r1_params)
+            resp.raise_for_status()
+            data = resp.json()
+        records = data.get("records", [])
+        if records:
+            # Sort descending by arrival_date so we always get the most recent record
+            records.sort(key=lambda r: _parse_ddmmyyyy(r.get("arrival_date", "")), reverse=True)
+            latest = records[0]
+            arrival = latest.get("arrival_date", "")
+            logger.info(f"data.gov.in R1 → {commodity}@{market or 'any'},{state} | latest: {arrival}")
+            return {
+                "commodity": latest.get("commodity", commodity.title()),
+                "market": latest.get("market", market),
+                "state": latest.get("state", state),
+                "variety": latest.get("variety"),
+                "grade": latest.get("grade"),
+                "modal_price_inr": float(latest["modal_price"]) if latest.get("modal_price") else None,
+                "min_price_inr": float(latest["min_price"]) if latest.get("min_price") else None,
+                "max_price_inr": float(latest["max_price"]) if latest.get("max_price") else None,
+                "arrival_date": arrival,
+                "data_lag_note": (
+                    f"Most recent government-reported data is from {arrival}. "
+                    "APMC mandi reporting has a typical 5–8 day lag. "
+                    "Always show this date explicitly — never say 'today'."
+                ),
+                "source": "data.gov.in – Current Daily Mandi Price (AGMARKNET)",
+            }
+        logger.info(f"Resource 1 returned no records for {commodity}/{state}, trying resource 2")
+    except Exception as exc:
+        logger.debug(f"data.gov.in resource 1 error: {exc} — trying resource 2")
+
+    # ── Resource 2: Variety-wise Daily Price (35985678) ─────────────────────
+    # Official filter keys: filters[State], filters[District], filters[Commodity], filters[Arrival_Date]
+    r2_id = settings.data_gov_variety_resource_id  # 35985678-0d79-46b4-9ed6-6f13308a1d24
+    r2_params: dict[str, Any] = {
+        "api-key": api_key,
+        "format": "json",
+        "filters[Commodity]": commodity.title(),
+        "limit": 50,  # Fetch enough records to find the most recent after client-side sort
+    }
+    if state:
+        r2_params["filters[State]"] = state.title()
+
+    try:
+        async with httpx.AsyncClient(timeout=settings.request_timeout, follow_redirects=True) as client:
+            resp = await client.get(f"{base}/resource/{r2_id}", params=r2_params)
+            resp.raise_for_status()
+            data = resp.json()
+        records = data.get("records", [])
+        if records:
+            records.sort(
+                key=lambda r: _parse_ddmmyyyy(r.get("Arrival_Date", r.get("arrival_date", ""))),
+                reverse=True,
+            )
+            latest = records[0]
+            arrival = latest.get("Arrival_Date", latest.get("arrival_date", ""))
+            logger.info(f"data.gov.in R2 → {commodity}@{state} | latest: {arrival}")
+            return {
+                "commodity": latest.get("Commodity", latest.get("commodity", commodity.title())),
+                "market": latest.get("Market", latest.get("market", market)),
+                "state": latest.get("State", latest.get("state", state)),
+                "modal_price_inr": float(latest["Modal_Price"]) if latest.get("Modal_Price") else (
+                    float(latest["modal_price"]) if latest.get("modal_price") else None
+                ),
+                "min_price_inr": float(latest["Min_Price"]) if latest.get("Min_Price") else (
+                    float(latest["min_price"]) if latest.get("min_price") else None
+                ),
+                "max_price_inr": float(latest["Max_Price"]) if latest.get("Max_Price") else (
+                    float(latest["max_price"]) if latest.get("max_price") else None
+                ),
+                "arrival_date": arrival,
+                "data_lag_note": (
+                    f"Most recent government-reported data is from {arrival}. "
+                    "APMC mandi reporting has a typical 5–8 day lag. "
+                    "Always show this date explicitly — never say 'today'."
+                ),
+                "source": "data.gov.in – Variety-wise Daily Mandi Price (AGMARKNET)",
+            }
+        logger.info(f"Resource 2 also returned no records for {commodity}/{state}")
+    except Exception as exc:
+        logger.debug(f"data.gov.in resource 2 error: {exc}")
+
+    return None
+
+
+async def _fetch_from_agmarknet(
+    commodity: str, market: str, state: str
+) -> dict[str, Any] | None:
+    """
+    Fetch price data directly from Agmarknet API.
+    Returns None if API is unavailable or returns no results.
+    """
+    api_key = settings.agmarknet_api_key
+    base_url = settings.agmarknet_base_url
+
+    if not api_key:
+        logger.debug("Agmarknet API key not configured, skipping this source")
+        return None
+
+    # Agmarknet API endpoint for commodity prices
+    url = f"{base_url}/commodity-price"
+    params: dict[str, Any] = {
+        "api_key": api_key,
+        "commodity": commodity.title(),
+        "limit": 5,
+    }
+    if market:
+        params["market"] = market.title()
+    if state:
+        params["state"] = state.title()
 
     try:
         async with httpx.AsyncClient(timeout=settings.request_timeout, follow_redirects=True) as client:
@@ -164,39 +361,29 @@ async def get_mandi_price(commodity: str, market: str = "", state: str = "Gujara
             resp.raise_for_status()
             data = resp.json()
 
-        records = data.get("records", [])
+        records = data.get("records", data.get("data", []))
         if not records:
-            return _price_fallback(commodity, market, note="No records found in API; using MSP fallback.")
+            logger.info(f"No records found for {commodity} in {market or 'any'} market on agmarknet.gov.in")
+            return None
 
         latest = records[0]
         return {
             "commodity": latest.get("commodity", commodity),
             "market": latest.get("market", market),
             "state": latest.get("state", state),
-            "modal_price_inr": latest.get("modal_price"),
-            "min_price_inr": latest.get("min_price"),
-            "max_price_inr": latest.get("max_price"),
-            "arrival_date": latest.get("arrival_date"),
-            "source": "data.gov.in / Agmarknet",
+            "modal_price_inr": float(latest.get("modal_price", latest.get("price"))) 
+                if (latest.get("modal_price") or latest.get("price")) else None,
+            "min_price_inr": float(latest.get("min_price")) if latest.get("min_price") else None,
+            "max_price_inr": float(latest.get("max_price")) if latest.get("max_price") else None,
+            "arrival_date": latest.get("arrival_date", latest.get("date")),
+            "source": "agmarknet.gov.in (Direct)",
+            "timestamp": latest.get("timestamp"),
         }
 
     except Exception as exc:
-        logger.warning(f"Mandi API error ({exc}). Using fallback price.")
-        return _price_fallback(commodity, market, note=f"API error: {exc}")
+        logger.debug(f"Agmarknet API error: {exc} — all sources exhausted")
+        return None
 
-
-def _price_fallback(commodity: str, market: str = "", note: str = "") -> dict[str, Any]:
-    key = commodity.lower().strip()
-    price = _PRICE_FALLBACK.get(key)
-    result: dict[str, Any] = {
-        "commodity": commodity,
-        "market": market or "N/A (fallback)",
-        "modal_price_inr": price,
-        "source": "Static MSP fallback table (data.gov.in unavailable)",
-    }
-    if note:
-        result["note"] = note
-    return result
 
 
 # ---------------------------------------------------------------------------

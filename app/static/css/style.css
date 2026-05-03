@@ -95,6 +95,39 @@ body::before {
     margin-bottom: 15px;
 }
 
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.history-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid transparent;
+    color: var(--text-white);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.history-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.history-item.active {
+    background: rgba(132, 204, 22, 0.18);
+    border-color: rgba(132, 204, 22, 0.4);
+}
+
+.history-item i {
+    color: var(--accent);
+    min-width: 18px;
+}
+
 .history-empty {
     font-size: 0.9rem;
     color: var(--text-dim);

@@ -20,9 +20,10 @@ from __future__ import annotations
 import asyncio
 from typing import Any, AsyncGenerator
 
-from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, ChatMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 from langchain_mistralai import ChatMistralAI
+import langchain_mistralai.chat_models as mistral_chat_models
 from langgraph.prebuilt import create_react_agent
 
 from app.services.agro_tools import (
@@ -46,6 +47,66 @@ from app.utils.config import get_settings
 from app.utils.logger import logger
 
 settings = get_settings()
+
+
+# Fix a Mistral tool-calling conversion bug in langchain_mistralai.
+# The package duplicates tool calls when converting AIMessages to Mistral format,
+# which causes `Duplicate tool call id in assistant message` errors.
+def _patched_convert_message_to_mistral_chat_message(message):
+    if isinstance(message, ChatMessage):
+        return {"role": message.role, "content": message.content}
+    if isinstance(message, HumanMessage):
+        return {"role": "user", "content": message.content}
+    if isinstance(message, AIMessage):
+        message_dict: dict[str, Any] = {"role": "assistant"}
+        tool_calls: list[dict[str, Any]] = []
+
+        if message.tool_calls or message.invalid_tool_calls:
+            for tool_call in message.tool_calls:
+                tool_calls.append(
+                    mistral_chat_models._format_tool_call_for_mistral(tool_call)
+                )
+            for invalid_tool_call in message.invalid_tool_calls:
+                tool_calls.append(
+                    mistral_chat_models._format_invalid_tool_call_for_mistral(invalid_tool_call)
+                )
+        elif "tool_calls" in message.additional_kwargs:
+            for tc in message.additional_kwargs["tool_calls"]:
+                chunk = {
+                    "function": {
+                        "name": tc["function"]["name"],
+                        "arguments": tc["function"]["arguments"],
+                    }
+                }
+                if _id := tc.get("id"):
+                    chunk["id"] = _id
+                tool_calls.append(chunk)
+
+        if tool_calls:
+            message_dict["tool_calls"] = tool_calls
+        if tool_calls and message.content:
+            message_dict["content"] = ""
+        else:
+            message_dict["content"] = message.content
+        if "prefix" in message.additional_kwargs:
+            message_dict["prefix"] = message.additional_kwargs["prefix"]
+        return message_dict
+    if isinstance(message, SystemMessage):
+        return {"role": "system", "content": message.content}
+    if isinstance(message, ToolMessage):
+        return {
+            "role": "tool",
+            "content": message.content,
+            "name": message.name,
+            "tool_call_id": mistral_chat_models._convert_tool_call_id_to_mistral_compatible(
+                message.tool_call_id
+            ),
+        }
+    raise ValueError(f"Got unknown type {message}")
+
+mistral_chat_models._convert_message_to_mistral_chat_message = (
+    _patched_convert_message_to_mistral_chat_message
+)
 
 
 # ---------------------------------------------------------------------------
@@ -134,19 +195,19 @@ async def run_agent_with_metadata(
     Execution of the agent with detailed metadata capture.
     Returns: {"answer": str, "tool_calls": list[str], "chunks": list[dict]}
     """
-    # 1. Retrieve context
+    # Retrieve context
     chunks = retrieve_context(question, filters=filters)
     context_str = format_context(chunks)
 
-    # 2. Load session history
+    # Load session history
     history = get_history(session_id)
     history_str = format_history(history)
 
-    # 4. Detect language and lock the prompt
+    # Detect language and lock the prompt
     lang_code = detect_language(question)
     lang_name = get_language_name(lang_code)
 
-    # 3. Build user message
+    # Build user message
     user_msg = RAG_USER_TEMPLATE.format(
         context=context_str,
         history=history_str,
@@ -176,12 +237,12 @@ async def run_agent_with_metadata(
     for msg in result.get("messages", []):
         if isinstance(msg, AIMessage):
             if msg.content:
-                answer = msg.content
+                answer = str(msg.content)
             if msg.tool_calls:
                 for tc in msg.tool_calls:
                     tool_names.append(tc["name"])
 
-    # 7. Persist to session store
+    #  Persist to session store
     append_turn(session_id, "user", question)
     append_turn(session_id, "assistant", answer)
 
@@ -244,7 +305,7 @@ async def stream_agent(
         config={"recursion_limit": settings.max_agent_iterations * 2},
     ):
         if isinstance(msg, AIMessageChunk) and msg.content:
-            token = msg.content
+            token = str(msg.content)
             full_answer_parts.append(token)
             buffer += token
 

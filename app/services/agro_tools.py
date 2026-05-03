@@ -51,11 +51,20 @@ async def get_weather_advisory(location: str) -> dict[str, Any]:
 
     url = f"{settings.openweather_base_url}/weather"
     params = {
-        "q": location,
         "appid": settings.openweather_api_key,
         "units": "metric",
         "lang": "en",
     }
+
+    # Support both city names and latitude,longitude strings.
+    if isinstance(location, str) and "," in location:
+        coords = [part.strip() for part in location.split(",", 1)]
+        if len(coords) == 2 and all(coords):
+            params["lat"], params["lon"] = coords
+        else:
+            params["q"] = location
+    else:
+        params["q"] = location
 
     try:
         async with httpx.AsyncClient(timeout=settings.request_timeout) as client:

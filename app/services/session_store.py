@@ -16,9 +16,8 @@ from app.utils.logger import logger
 
 settings = get_settings()
 
-# ---------------------------------------------------------------------------
-# Redis client (optional)
-# ---------------------------------------------------------------------------
+
+# Redis client 
 
 _redis = None
 
@@ -44,9 +43,7 @@ def _get_redis():
 _memory_store: dict[str, list[dict]] = defaultdict(list)
 
 
-# ---------------------------------------------------------------------------
 # Public API
-# ---------------------------------------------------------------------------
 
 
 def get_history(session_id: str) -> list[dict[str, str]]:

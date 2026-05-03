@@ -32,24 +32,162 @@ function createNewSession() {
     elements.chatMessages.innerHTML = '';
     elements.welcomeScreen.style.opacity = '1';
     elements.welcomeScreen.style.pointerEvents = 'auto';
+    loadHistory();
 }
 
 function loadHistory() {
     const history = JSON.parse(localStorage.getItem('agrosight_history') || '[]');
     if (history.length > 0) {
-        elements.sessionHistory.innerHTML = history.map(item => `
-            <div class="history-item" onclick="loadSession('${item.id}')">
-                <i data-lucide="message-square"></i>
-                <span>${item.title || 'Previous Chat'}</span>
-            </div>
-        `).join('');
+        elements.sessionHistory.innerHTML = history.map(item => {
+            const activeClass = item.id === currentSessionId ? 'active' : '';
+            return `
+                <div class="history-item ${activeClass}" onclick="loadSession('${item.id}')">
+                    <i data-lucide="message-square"></i>
+                    <span>${item.title || 'Previous Chat'}</span>
+                </div>
+            `;
+        }).join('');
         lucide.createIcons();
+    } else {
+        elements.sessionHistory.innerHTML = '<div class="history-empty">No recent chats</div>';
     }
 }
 
+function loadSession(sessionId) {
+    currentSessionId = sessionId;
+    localStorage.setItem('agrosight_session_id', currentSessionId);
+    loadHistory();
+    elements.chatMessages.innerHTML = '';
+    elements.welcomeScreen.style.opacity = '0';
+    elements.welcomeScreen.style.pointerEvents = 'none';
+
+    const sessions = JSON.parse(localStorage.getItem('agrosight_sessions') || '{}');
+    const conversation = sessions[currentSessionId] || [];
+
+    if (conversation.length === 0) {
+        elements.welcomeScreen.style.opacity = '1';
+        elements.welcomeScreen.style.pointerEvents = 'auto';
+        return;
+    }
+
+    conversation.forEach((turn) => {
+        appendMessage(turn.role, turn.content);
+    });
+}
+
 async function fetchWeatherMock() {
-    // In a real app, we might call /search or a separate endpoint
-    elements.weatherDisplay.textContent = 'Ahmedabad: , Sunny';
+    // First try browser geolocation, then fallback to IP-based geolocation
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
+                await fetchWeatherByCoordinates(latitude, longitude);
+            },
+            () => {
+                // Geolocation denied or unavailable, use IP-based geolocation
+                fetchWeatherByIP();
+            }
+        );
+    } else {
+        fetchWeatherByIP();
+    }
+}
+
+async function fetchWeatherByIP() {
+    try {
+        // Try multiple IP geolocation services
+        let locationData = null;
+        
+        // Primary: ip-api.com
+        try {
+            const response = await fetch('https://ip-api.com/json/?fields=city,lat,lon');
+            if (response.ok) {
+                locationData = await response.json();
+                if (locationData.lat && locationData.lon) {
+                    await fetchWeatherByCoordinates(locationData.lat, locationData.lon, locationData.city);
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn('ip-api.com failed:', e);
+        }
+        
+        // Secondary: ipapi.co
+        try {
+            const response = await fetch('https://ipapi.co/json/');
+            if (response.ok) {
+                locationData = await response.json();
+                if (locationData.latitude && locationData.longitude) {
+                    await fetchWeatherByCoordinates(locationData.latitude, locationData.longitude, locationData.city);
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn('ipapi.co failed:', e);
+        }
+        
+        // Tertiary: geojs.io
+        try {
+            const response = await fetch('https://get.geojs.io/v1/ip/geo.json');
+            if (response.ok) {
+                locationData = await response.json();
+                if (locationData.latitude && locationData.longitude) {
+                    await fetchWeatherByCoordinates(locationData.latitude, locationData.longitude, locationData.city);
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn('geojs.io failed:', e);
+        }
+        
+        // If all fail
+        elements.weatherDisplay.textContent = 'Location: Unable to determine';
+    } catch (error) {
+        console.error('IP geolocation fallback error:', error);
+        elements.weatherDisplay.textContent = 'Location: Unable to access';
+    }
+}
+
+
+
+async function fetchWeatherByCoordinates(latitude, longitude, cityHint = null) {
+    try {
+        // Fetch weather from OpenWeatherMap
+        const response = await fetch(
+            `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&units=metric&appid=fcc4f3fe373e37c3b00e0bf86236f3bc`
+        );
+        
+        if (response.ok) {
+            const data = await response.json();
+            const location = data.name || cityHint || 'Current Location';
+            const temp = Math.round(data.main.temp);
+            const weather = data.weather[0].main;
+            elements.weatherDisplay.textContent = `${location}: ${temp}°C, ${weather}`;
+        } else {
+            getLocationFromCoordinates(latitude, longitude, cityHint);
+        }
+    } catch (error) {
+        console.error('Weather fetch error:', error);
+        getLocationFromCoordinates(latitude, longitude, cityHint);
+    }
+}
+
+async function getLocationFromCoordinates(latitude, longitude, cityHint = null) {
+    try {
+        // Fallback: Use Nominatim (OpenStreetMap) for reverse geocoding
+        const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+        );
+        
+        if (response.ok) {
+            const data = await response.json();
+            const location = cityHint || data.address?.city || data.address?.town || data.address?.village || 'Current Location';
+            elements.weatherDisplay.textContent = `${location}: ${Math.round(latitude)}°N, ${Math.round(longitude)}°E`;
+        }
+    } catch (error) {
+        console.error('Reverse geocoding error:', error);
+        elements.weatherDisplay.textContent = 'Location: Unable to fetch';
+    }
 }
 
 // UI Helpers
@@ -175,15 +313,28 @@ async function sendMessage(question) {
 }
 
 function saveToLocalHistory(question, answer) {
-    // Simplified local persistence for the demo
+    // Session metadata for sidebar history
     let history = JSON.parse(localStorage.getItem('agrosight_history') || '[]');
-    const existing = history.findIndex(h => h.id === currentSessionId);
+    const existingIndex = history.findIndex(h => h.id === currentSessionId);
+    const title = question.substring(0, 30) + '...';
 
-    if (existing === -1) {
-        history.unshift({ id: currentSessionId, title: question.substring(0, 30) + '...' });
+    if (existingIndex === -1) {
+        history.unshift({ id: currentSessionId, title, updatedAt: Date.now() });
+    } else {
+        history[existingIndex].title = title;
+        history[existingIndex].updatedAt = Date.now();
+        history.unshift(history.splice(existingIndex, 1)[0]);
     }
 
     localStorage.setItem('agrosight_history', JSON.stringify(history.slice(0, 10)));
+
+    // Persist full conversation for the session
+    const sessions = JSON.parse(localStorage.getItem('agrosight_sessions') || '{}');
+    sessions[currentSessionId] = sessions[currentSessionId] || [];
+    sessions[currentSessionId].push({ role: 'user', content: question });
+    sessions[currentSessionId].push({ role: 'assistant', content: answer });
+    localStorage.setItem('agrosight_sessions', JSON.stringify(sessions));
+
     loadHistory();
 }
 
@@ -200,6 +351,108 @@ elements.newChatBtn.addEventListener('click', () => {
 function quickQuery(text) {
     elements.userInput.value = text;
     sendMessage(text);
+}
+
+function queryCurrentWeather() {
+    // Get current location and query weather for it
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
+                await getLocationNameForQuery(latitude, longitude);
+            },
+            () => {
+                // Geolocation denied, use IP-based approach
+                queryWeatherByIP();
+            }
+        );
+    } else {
+        queryWeatherByIP();
+    }
+}
+
+async function queryWeatherByIP() {
+    try {
+        let locationData = null;
+        
+        // Primary: ip-api.com
+        try {
+            const response = await fetch('https://ip-api.com/json/?fields=city,lat,lon');
+            if (response.ok) {
+                locationData = await response.json();
+                if (locationData.city) {
+                    quickQuery(`Current weather in ${locationData.city}`);
+                    return;
+                }
+                if (locationData.lat && locationData.lon) {
+                    quickQuery(`Current weather at coordinates ${locationData.lat}, ${locationData.lon}`);
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn('ip-api.com failed:', e);
+        }
+        
+        // Secondary: ipapi.co
+        try {
+            const response = await fetch('https://ipapi.co/json/');
+            if (response.ok) {
+                locationData = await response.json();
+                if (locationData.city) {
+                    quickQuery(`Current weather in ${locationData.city}`);
+                    return;
+                }
+                if (locationData.latitude && locationData.longitude) {
+                    quickQuery(`Current weather at coordinates ${locationData.latitude}, ${locationData.longitude}`);
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn('ipapi.co failed:', e);
+        }
+        
+        // Tertiary: geojs.io
+        try {
+            const response = await fetch('https://get.geojs.io/v1/ip/geo.json');
+            if (response.ok) {
+                locationData = await response.json();
+                if (locationData.city) {
+                    quickQuery(`Current weather in ${locationData.city}`);
+                    return;
+                }
+                if (locationData.latitude && locationData.longitude) {
+                    quickQuery(`Current weather at coordinates ${locationData.latitude}, ${locationData.longitude}`);
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn('geojs.io failed:', e);
+        }
+        
+        // If all fail
+        quickQuery('Current weather in my location');
+    } catch (error) {
+        console.error('IP geolocation fallback error:', error);
+        quickQuery('Current weather in my location');
+    }
+}
+
+async function getLocationNameForQuery(latitude, longitude) {
+    try {
+        const response = await fetch(
+            `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&units=metric&appid=fcc4f3fe373e37c3b00e0bf86236f3bc`
+        );
+        
+        if (response.ok) {
+            const data = await response.json();
+            const location = data.name || `${latitude}, ${longitude}`;
+            quickQuery(`Current weather in ${location}`);
+        } else {
+            quickQuery(`Current weather at coordinates ${latitude}, ${longitude}`);
+        }
+    } catch (error) {
+        quickQuery(`Current weather at coordinates ${latitude}, ${longitude}`);
+    }
 }
 
 // Start
